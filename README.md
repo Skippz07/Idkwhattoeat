@@ -102,7 +102,7 @@ IDKwhattoeat/
    - Click on "Environment Variables"
    - Add a new variable:
      - **Name**: `GOOGLE_MAPS_API_KEY`
-     - **Value**: Your Google Maps API key (e.g., `AIzaSyCwCYDA3MS6A5FPNT4VrGw7seV-yxGhp84`)
+     - **Value**: Your Google Maps API key (e.g., `1234`)
      - **Environment**: Production, Preview, Development (select all)
 
 2. **Redeploy:**
