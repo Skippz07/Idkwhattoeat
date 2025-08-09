@@ -12,38 +12,31 @@
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Google Maps API with Places library -->
     <script>
-        // Load Google Maps API with API key fetched from server (env vars)
         async function loadGoogleMapsAPI() {
             let apiKey = '';
             const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-            // Primary: fetch from serverless endpoint (env-driven)
             try {
-                console.log('🔍 Attempting to fetch API key from server...');
                 const response = await fetch('/api/config');
                 if (response.ok) {
                     const data = await response.json();
                     apiKey = data.apiKey || '';
                 } else {
-                    console.warn(`⚠️ Server returned ${response.status} for /api/config`);
+                    
                 }
             } catch (e) {
-                console.warn('⚠️ Fetch to /api/config failed.', e?.message);
+                
             }
 
-            // Fallbacks ONLY in local dev (never in production)
             if (!apiKey && isLocal) {
                 if (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) {
                     apiKey = window.GOOGLE_MAPS_API_KEY;
-                    console.log('✅ Loaded API key from window.GOOGLE_MAPS_API_KEY (local only)');
                 }
                 if (!apiKey && typeof localStorage !== 'undefined') {
                     const stored = localStorage.getItem('GOOGLE_MAPS_API_KEY');
                     if (stored) {
                         apiKey = stored;
-                        console.log('✅ Loaded API key from localStorage (local only)');
                     }
                 }
                 if (!apiKey) {
@@ -51,13 +44,11 @@
                     const fromQuery = params.get('gmap_key');
                     if (fromQuery) {
                         apiKey = fromQuery;
-                        console.log('✅ Loaded API key from URL query parameter gmap_key (local only)');
                     }
                 }
             }
 
             if (!apiKey) {
-                console.error('❌ Google Maps API key not available. Ensure /api/config is working and the key is set in environment.');
                 return;
             }
 
@@ -66,10 +57,8 @@
             script.async = true;
             script.defer = true;
             document.head.appendChild(script);
-            console.log('✅ Google Maps API script injected');
         }
 
-        // Load the API when the page loads
         document.addEventListener('DOMContentLoaded', loadGoogleMapsAPI);
     </script>
 </head>
