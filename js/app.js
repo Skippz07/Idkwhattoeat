@@ -239,17 +239,15 @@ async function findRestaurants() {
 function getErrorMessage(error) {
     const errorMessage = error.message || error.toString();
     
-    if (errorMessage.includes('API key')) {
-        return 'Google Maps API key is missing or invalid. Please check your configuration.';
-    } else if (errorMessage.includes('Places API error: REQUEST_DENIED')) {
+    if (errorMessage.includes('REQUEST_DENIED')) {
         return 'Access to Google Places API was denied. Please check your API key and billing setup.';
-    } else if (errorMessage.includes('Places API error: OVER_QUERY_LIMIT')) {
+    } else if (errorMessage.includes('OVER_QUERY_LIMIT')) {
         return 'Google Places API quota exceeded. Please try again later.';
-    } else if (errorMessage.includes('Places API error: INVALID_REQUEST')) {
+    } else if (errorMessage.includes('INVALID_REQUEST')) {
         return 'Invalid request to Google Places API. Please check your location and filters.';
-    } else if (errorMessage.includes('Places API error: NOT_FOUND')) {
+    } else if (errorMessage.includes('NOT_FOUND')) {
         return 'No restaurants found in your area. Try increasing the search radius.';
-    } else if (errorMessage.includes('Places API error: ZERO_RESULTS')) {
+    } else if (errorMessage.includes('ZERO_RESULTS')) {
         return 'No restaurants found for this food type in your area. Try a different food type or increase the search radius.';
     } else if (errorMessage.includes('Property radius is invalid')) {
         return 'Search configuration error. Please try refreshing the page.';
@@ -763,6 +761,17 @@ async function performPaginatedNearbySearch(service, request, maxPages = 3) {
     return allResults;
 }
 
+async function ensureGoogleMapsReady(timeoutMs = 5000) {
+    if (typeof google !== 'undefined' && google.maps && google.maps.places) return true;
+    if (window.GMAPS_READY) return true;
+    return new Promise((resolve) => {
+        let settled = false;
+        const onReady = () => { if (!settled) { settled = true; resolve(true); } };
+        const timer = setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, timeoutMs);
+        document.addEventListener('gmaps:ready', () => { clearTimeout(timer); onReady(); }, { once: true });
+    });
+}
+
 async function searchRestaurantsByFoodType(foodType) {
     if (!userLocation) {
         console.error('No user location available');
@@ -773,9 +782,10 @@ async function searchRestaurantsByFoodType(foodType) {
         console.log(`🔍 EFFICIENT SEARCH: Searching for "${foodType}" restaurants only...`);
         console.log(`📍 User location: ${userLocation.latitude}, ${userLocation.longitude}`);
         
-        // Check if Google Maps API is loaded
-        if (typeof google === 'undefined' || !google.maps || !google.maps.places) {
-            throw new Error('Google Maps API not loaded. Please check your API key configuration.');
+        // Wait for Google Maps API to be ready
+        const ready = await ensureGoogleMapsReady(8000);
+        if (!ready || typeof google === 'undefined' || !google.maps || !google.maps.places) {
+            throw new Error('Google Maps API not loaded');
         }
         
         // Create a temporary map for Places service (required by Google Places API)

@@ -22,12 +22,8 @@
                 if (response.ok) {
                     const data = await response.json();
                     apiKey = data.apiKey || '';
-                } else {
-                    
                 }
-            } catch (e) {
-                
-            }
+            } catch (e) {}
 
             if (!apiKey && isLocal) {
                 if (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) {
@@ -35,28 +31,30 @@
                 }
                 if (!apiKey && typeof localStorage !== 'undefined') {
                     const stored = localStorage.getItem('GOOGLE_MAPS_API_KEY');
-                    if (stored) {
-                        apiKey = stored;
-                    }
+                    if (stored) apiKey = stored;
                 }
                 if (!apiKey) {
                     const params = new URLSearchParams(window.location.search);
                     const fromQuery = params.get('gmap_key');
-                    if (fromQuery) {
-                        apiKey = fromQuery;
-                    }
+                    if (fromQuery) apiKey = fromQuery;
                 }
             }
 
-            if (!apiKey) {
-                return;
-            }
+            if (!apiKey) return;
 
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
-            script.async = true;
-            script.defer = true;
-            document.head.appendChild(script);
+            await new Promise((resolve, reject) => {
+                window.__onGoogleMapsLoaded = () => {
+                    window.GMAPS_READY = true;
+                    document.dispatchEvent(new Event('gmaps:ready'));
+                    resolve();
+                };
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=__onGoogleMapsLoaded`;
+                script.async = true;
+                script.defer = true;
+                script.onerror = () => reject(new Error('Google Maps script failed to load'));
+                document.head.appendChild(script);
+            });
         }
 
         document.addEventListener('DOMContentLoaded', loadGoogleMapsAPI);
