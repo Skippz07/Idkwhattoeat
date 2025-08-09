@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>IDK What To Eat - Restaurant Recommendation</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Google Maps API with Places library -->
+    <script>
+        // Load Google Maps API with API key fetched from server (env vars)
+        async function loadGoogleMapsAPI() {
+            let apiKey = '';
+            const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+            // Primary: fetch from serverless endpoint (env-driven)
+            try {
+                console.log('🔍 Attempting to fetch API key from server...');
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    const data = await response.json();
+                    apiKey = data.apiKey || '';
+                } else {
+                    console.warn(`⚠️ Server returned ${response.status} for /api/config`);
+                }
+            } catch (e) {
+                console.warn('⚠️ Fetch to /api/config failed.', e?.message);
+            }
+
+            // Fallbacks ONLY in local dev (never in production)
+            if (!apiKey && isLocal) {
+                if (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) {
+                    apiKey = window.GOOGLE_MAPS_API_KEY;
+                    console.log('✅ Loaded API key from window.GOOGLE_MAPS_API_KEY (local only)');
+                }
+                if (!apiKey && typeof localStorage !== 'undefined') {
+                    const stored = localStorage.getItem('GOOGLE_MAPS_API_KEY');
+                    if (stored) {
+                        apiKey = stored;
+                        console.log('✅ Loaded API key from localStorage (local only)');
+                    }
+                }
+                if (!apiKey) {
+                    const params = new URLSearchParams(window.location.search);
+                    const fromQuery = params.get('gmap_key');
+                    if (fromQuery) {
+                        apiKey = fromQuery;
+                        console.log('✅ Loaded API key from URL query parameter gmap_key (local only)');
+                    }
+                }
+            }
+
+            if (!apiKey) {
+                console.error('❌ Google Maps API key not available. Ensure /api/config is working and the key is set in environment.');
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+            console.log('✅ Google Maps API script injected');
+        }
+
+        // Load the API when the page loads
+        document.addEventListener('DOMContentLoaded', loadGoogleMapsAPI);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1><i class="fas fa-utensils"></i> IDK What To Eat</h1>
+            <p>Let us help you decide where to eat!</p>
+        </header>
+
+        <!-- Location Section -->
+        <section class="location-section" id="locationSection">
+            <div class="card">
+                <h2><i class="fas fa-map-marker-alt"></i> Your Location</h2>
+                <div class="location-info">
+                    <p id="locationStatus">Detecting your location...</p>
+                    <button id="getLocationBtn" class="btn btn-primary">
+                        <i class="fas fa-location-arrow"></i> Get My Location
+                    </button>
+                </div>
+                <div class="location-details" id="locationDetails" style="display: none;">
+                    <p><strong>Latitude:</strong> <span id="latitude"></span></p>
+                    <p><strong>Longitude:</strong> <span id="longitude"></span></p>
+                    <p><strong>Address:</strong> <span id="address"></span></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Filters Section -->
+        <section class="filters-section" id="filtersSection" style="display: none;">
+            <div class="card">
+                <h2><i class="fas fa-filter"></i> Filter Preferences</h2>
+                
+                <!-- Distance Filter -->
+                <div class="filter-group">
+                    <label for="distanceRange">Distance (miles):</label>
+                    <div class="range-container">
+                        <input type="range" id="distanceRange" min="1" max="25" value="5" class="range-slider">
+                        <span id="distanceValue">5 miles</span>
+                    </div>
+                </div>
+
+                <!-- Rating Filter -->
+                <div class="filter-group">
+                    <label for="minRating">Minimum Rating:</label>
+                    <div class="rating-container">
+                        <select id="minRating" class="select-input">
+                            <option value="0">Any Rating</option>
+                            <option value="3">3+ Stars</option>
+                            <option value="3.5">3.5+ Stars</option>
+                            <option value="4">4+ Stars</option>
+                            <option value="4.5">4.5+ Stars</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Reviews Filter -->
+                <div class="filter-group">
+                    <label for="minReviews">Minimum Reviews:</label>
+                    <div class="reviews-container">
+                        <select id="minReviews" class="select-input">
+                            <option value="0">Any Reviews</option>
+                            <option value="10">10+ Reviews</option>
+                            <option value="50">50+ Reviews</option>
+                            <option value="100">100+ Reviews</option>
+                            <option value="500">500+ Reviews</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Food Type Filter -->
+                <div class="filter-group">
+                    <label>Food Types:</label>
+                    <div class="food-types-grid" id="foodTypesGrid">
+                        <!-- Food types will be populated dynamically -->
+                    </div>
+                </div>
+
+                <button id="findRestaurantsBtn" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Find Restaurants
+                </button>
+            </div>
+        </section>
+
+        <!-- Food Type Wheel Section -->
+        <section class="wheel-section" id="foodTypeWheelSection" style="display: none;">
+            <div class="card">
+                <h2><i class="fas fa-dice"></i> What Type of Food Are You In The Mood For?</h2>
+                <div class="wheel-container">
+                    <div class="wheel" id="foodTypeWheel">
+                        <div class="wheel-pointer"></div>
+                        <div class="wheel-segments" id="foodTypeWheelSegments">
+                            <!-- Wheel segments will be populated dynamically -->
+                        </div>
+                    </div>
+                    <button id="spinFoodTypeBtn" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Spin for Food Type
+                    </button>
+                </div>
+                <div class="result" id="foodTypeResult" style="display: none;">
+                    <h3>You should try: <span id="selectedFoodType"></span></h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- Restaurant Wheel Section -->
+        <section class="wheel-section" id="restaurantWheelSection" style="display: none;">
+            <div class="card">
+                <h2><i class="fas fa-dice"></i> Where Should You Eat?</h2>
+                <div class="wheel-container">
+                    <div class="wheel" id="restaurantWheel">
+                        <div class="wheel-pointer"></div>
+                        <div class="wheel-segments" id="restaurantWheelSegments">
+                            <!-- Wheel segments will be populated dynamically -->
+                        </div>
+                    </div>
+                    <button id="spinRestaurantBtn" class="btn btn-primary">
+                        <i class="fas fa-play"></i> Spin for Restaurant
+                    </button>
+                </div>
+                <div class="result" id="restaurantResult" style="display: none;">
+                    <h3>You should eat at: <span id="selectedRestaurant"></span></h3>
+                    <div class="restaurant-details" id="restaurantDetails"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading Section -->
+        <section class="loading-section" id="loadingSection" style="display: none;">
+            <div class="card">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Finding restaurants near you...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <div class="card">
+                <h2><i class="fas fa-list"></i> Found Restaurants</h2>
+                <div class="results-count">
+                    <p>Found <span id="restaurantCount">0</span> restaurants matching your criteria</p>
+                </div>
+                <div class="restaurants-grid" id="restaurantsGrid">
+                    <!-- Restaurants will be populated here -->
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
