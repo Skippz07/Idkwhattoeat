@@ -515,8 +515,12 @@ async function searchRestaurantsByFoodType(foodType) {
     const minRating = parseFloat(document.getElementById('minRating').value);
     const minReviews = parseInt(document.getElementById('minReviews').value, 10);
     const meters = distance * 1609.34;
+    const openNow = document.getElementById('openNowFilter')?.checked === true;
 
-    const cacheKey = makeCacheKey(foodType, distance, minRating, minReviews);
+    
+
+    const cacheKey = `${makeCacheKey(foodType, distance, minRating, minReviews)}::open=${openNow ? 1 : 0}`;
+
     if (resultsCache.has(cacheKey)) {
       filteredRestaurants = resultsCache.get(cacheKey);
       createWheelSegments('restaurantWheel', filteredRestaurants, 'restaurant');
@@ -530,7 +534,8 @@ async function searchRestaurantsByFoodType(foodType) {
     const textSearchRequest1 = {
       query: `${foodType} restaurants`,
       location: { lat: userLocation.latitude, lng: userLocation.longitude },
-      radius: meters
+      radius: meters,
+      openNow
     };
     const textResults1 = await performPaginatedTextSearch(service, textSearchRequest1, 3, signal);
     if (signal.aborted) return;
@@ -539,7 +544,8 @@ async function searchRestaurantsByFoodType(foodType) {
     const textSearchRequest2 = {
       query: foodType,
       location: { lat: userLocation.latitude, lng: userLocation.longitude },
-      radius: meters
+      radius: meters,
+      openNow
     };
     const textResults2 = await performPaginatedTextSearch(service, textSearchRequest2, 3, signal);
     if (signal.aborted) return;
@@ -549,7 +555,8 @@ async function searchRestaurantsByFoodType(foodType) {
       const nearbySearchRequest = {
         location: { lat: userLocation.latitude, lng: userLocation.longitude },
         radius: meters,
-        type: 'restaurant'
+        type: 'restaurant',
+        openNow
       };
       const nearbyResults = await performPaginatedNearbySearch(service, nearbySearchRequest, 3, signal);
       if (signal.aborted) return;
@@ -563,7 +570,8 @@ async function searchRestaurantsByFoodType(foodType) {
         const chainReq = {
           query: chain,
           location: { lat: userLocation.latitude, lng: userLocation.longitude },
-          radius: meters
+          radius: meters,
+          openNow
         };
         const chainResults = await performPaginatedTextSearch(service, chainReq, 2, signal);
         if (signal.aborted) return;
@@ -571,8 +579,11 @@ async function searchRestaurantsByFoodType(foodType) {
       }
     }
 
-    const uniqueResults = allResults.filter((p, idx, arr) => idx === arr.findIndex((x) => x.place_id === p.place_id));
-
+    let uniqueResults = allResults.filter((p, idx, arr) => idx === arr.findIndex((x) => x.place_id === p.place_id));
+    if (openNow) {
+      uniqueResults = uniqueResults.filter(p => p.opening_hours?.open_now !== false);
+    }
+    
     if (!uniqueResults.length) {
       setRestaurantLoading(false);
       alert(`No ${foodType} restaurants found in your area. Try increasing the search radius or spinning the wheel again.`);
