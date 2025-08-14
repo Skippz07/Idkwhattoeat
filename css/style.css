@@ -418,6 +418,22 @@ body {
     color: #666;
 }
 
+.inline-loader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+    padding: 10px 0;
+    color: #667eea;
+    font-weight: 600;
+    opacity: 0.9;
+  }
+  
+  .inline-loader i {
+    font-size: 1.1rem;
+  }
+  
+
 /* Results Section */
 .results-count {
     text-align: center;

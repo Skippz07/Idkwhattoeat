@@ -3,7 +3,7 @@ let userLocation = null;
 let restaurants = [];
 let selectedFoodTypes = [];
 let filteredRestaurants = [];
-let selectedFoodTypeFromWheel = null; // Selected food type from the wheel
+let selectedFoodTypeFromWheel = null; 
 
 // Food types for the wheel
 const foodTypes = [
@@ -32,20 +32,11 @@ function initializeApp() {
 }
 
 function setupEventListeners() {
-  // Location button
   document.getElementById('getLocationBtn').addEventListener('click', getLocation);
-
-  // Distance range slider
   document.getElementById('distanceRange').addEventListener('input', updateDistanceValue);
-
-  // Find restaurants button
   document.getElementById('findRestaurantsBtn').addEventListener('click', findRestaurants);
-
-  // Spin buttons
   document.getElementById('spinFoodTypeBtn').addEventListener('click', spinFoodTypeWheel);
   document.getElementById('spinRestaurantBtn').addEventListener('click', spinRestaurantWheel);
-
-  // Touch feedback
   addTouchEventListeners();
 }
 
@@ -85,10 +76,8 @@ function toggleFoodType(type, element) {
     element.classList.add('selected');
   }
 
-  // Animation feedback
   element.style.animation = 'bounceIn 0.3s ease-out';
   setTimeout(() => { element.style.animation = ''; }, 300);
-
   console.log('[Filter] Selected food types:', selectedFoodTypes);
 }
 
@@ -217,6 +206,20 @@ async function findRestaurants() {
   }
 }
 
+function setRestaurantLoading(isLoading) {
+    const loader = document.getElementById('restaurantLoading');
+    const spinBtn = document.getElementById('spinRestaurantBtn');
+    const wheelSegments = document.getElementById('restaurantWheelSegments');
+    if (loader) loader.style.display = isLoading ? 'flex' : 'none';
+    if (spinBtn) spinBtn.disabled = isLoading;
+  
+    // While loading, clear previous wheel segments to avoid stale items
+    if (isLoading && wheelSegments) {
+      wheelSegments.innerHTML = '';
+      wheelSegments.style.transform = 'rotate(0deg)';
+    }
+  }
+  
 // Friendly error mapping
 function getErrorMessage(error) {
   const errorMessage = error.message || error.toString();
@@ -449,12 +452,20 @@ function spinFoodTypeWheel() {
 }
 
 function filterRestaurantsByWheelSelection(selectedFoodType) {
-  console.log(`=== SEARCHING FOR ${selectedFoodType} RESTAURANTS ===`);
-  console.log(`🎯 Efficient search: Only searching for ${selectedFoodType} restaurants`);
-  searchRestaurantsByFoodType(selectedFoodType);
-}
+    console.log(`=== SEARCHING FOR ${selectedFoodType} RESTAURANTS ===`);
+    console.log(`🎯 Efficient search: Only searching for ${selectedFoodType} restaurants`);
+  
+    // Ensure the restaurant wheel section is visible and show loader
+    const restaurantWheelSection = document.getElementById('restaurantWheelSection');
+    restaurantWheelSection.style.display = 'block';
+    restaurantWheelSection.classList.add('fade-in-up');
+    setRestaurantLoading(true);
+  
+    // Kick off the search
+    searchRestaurantsByFoodType(selectedFoodType);
+  }
+  
 
-// --------- Pagination Helpers (Fixed) ---------
 
 // Proper Text Search pagination (calls pagination.nextPage())
 async function performPaginatedTextSearch(service, request, maxPages = 3) {
@@ -620,9 +631,10 @@ async function searchRestaurantsByFoodType(foodType) {
     console.log(`📊 Total unique results found: ${uniqueResults.length} (from ${allResults.length} total results)`);
 
     if (!uniqueResults.length) {
-      console.log(`❌ No ${foodType} restaurants found in your area`);
-      alert(`No ${foodType} restaurants found in your area. Try increasing the search radius or spinning the wheel again.`);
-      return;
+        setRestaurantLoading(false);
+        alert(`No ${foodType} restaurants found in your area. Try increasing the search radius or spinning the wheel again.`);
+        return;
+        
     }
 
     // Enrich each place
@@ -658,13 +670,18 @@ async function searchRestaurantsByFoodType(foodType) {
     console.log(`[Results] After filters: ${filteredFoodTypeRestaurants.length} / ${foodTypeRestaurants.length} (${foodType})`);
 
     if (!filteredFoodTypeRestaurants.length) {
-      alert(`No ${foodType} restaurants found matching your criteria. Try adjusting your filters or spinning the wheel again.`);
-      return;
+        setRestaurantLoading(false);
+        alert(`No ${foodType} restaurants found matching your criteria. Try adjusting your filters or spinning the wheel again.`);
+        return;
     }
 
-    // Sort by distance and update wheels/results
-    const sorted = filteredFoodTypeRestaurants.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
-    filteredRestaurants = sorted;
+const sorted = filteredFoodTypeRestaurants.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
+filteredRestaurants = sorted;
+
+createWheelSegments('restaurantWheel', filteredRestaurants, 'restaurant');
+
+setRestaurantLoading(false);
+
 
     displayRestaurants(sorted, true, foodType);
 
@@ -676,6 +693,7 @@ async function searchRestaurantsByFoodType(foodType) {
     console.log(`✅ Successfully found and displayed ${sorted.length} ${foodType} restaurants`);
   } catch (error) {
     console.error('Error searching for restaurants by food type:', error);
+    setRestaurantLoading(false); 
     const errorMessage = getErrorMessage(error);
     alert(`Error searching for ${foodType} restaurants: ${errorMessage}`);
   }
@@ -815,7 +833,6 @@ function createWheelSegments(wheelId, items, segmentType = 'food') {
   });
 }
 
-// Utility: show/hide sections (not heavily used but handy)
 function showSection(sectionId) {
   document.querySelectorAll('section').forEach((s) => { s.style.display = 'none'; });
   document.getElementById(sectionId).style.display = 'block';
