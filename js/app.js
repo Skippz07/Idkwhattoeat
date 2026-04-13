@@ -53,6 +53,8 @@ document.addEventListener('DOMContentLoaded', function () {
 function initializeApp() {
   setupEventListeners();
   populateFoodTypes();
+  initTheme();
+  initMobileActionBar();
   if (navigator.geolocation) {
     document.getElementById('locationStatus').textContent = 'Click the button to get your location';
   } else {
@@ -61,6 +63,124 @@ function initializeApp() {
   }
 
   showLocalApiKeyHintIfNeeded();
+}
+
+function initTheme() {
+  const select = document.getElementById('themeSelect');
+  if (!select) return;
+
+  const stored = localStorage.getItem('themePreference') || 'auto';
+  select.value = stored;
+  applyThemePreference(stored);
+
+  select.addEventListener('change', () => {
+    const pref = select.value || 'auto';
+    localStorage.setItem('themePreference', pref);
+    applyThemePreference(pref);
+  });
+}
+
+function applyThemePreference(pref) {
+  const root = document.documentElement;
+  const theme = (pref === 'dark' || pref === 'light') ? pref : 'auto';
+
+  if (theme === 'auto') {
+    root.removeAttribute('data-theme');
+  } else {
+    root.setAttribute('data-theme', theme);
+  }
+}
+
+function initMobileActionBar() {
+  const bar = document.getElementById('mobileActionBar');
+  const btn = document.getElementById('mobileActionBtn');
+  if (!bar || !btn) return;
+
+  btn.addEventListener('click', () => {
+    const action = getPrimaryAction();
+    if (!action?.targetId) return;
+    const target = document.getElementById(action.targetId);
+    target?.click();
+  });
+
+  // Keep it updated on interactions and async UI changes.
+  window.addEventListener('resize', updateMobileActionBar);
+  document.addEventListener('click', () => setTimeout(updateMobileActionBar, 0));
+  setInterval(updateMobileActionBar, 600);
+  updateMobileActionBar();
+}
+
+function isVisible(el) {
+  if (!el) return false;
+  const style = window.getComputedStyle(el);
+  return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+}
+
+function getPrimaryAction() {
+  const getLocationBtn = document.getElementById('getLocationBtn');
+  const findRestaurantsBtn = document.getElementById('findRestaurantsBtn');
+  const spinFoodTypeBtn = document.getElementById('spinFoodTypeBtn');
+  const spinRestaurantBtn = document.getElementById('spinRestaurantBtn');
+  const startBattleBtn = document.getElementById('startBattleBtn');
+  const battleSkipBtn = document.getElementById('battleSkipBtn');
+
+  const locationSection = document.getElementById('locationSection');
+  const filtersSection = document.getElementById('filtersSection');
+  const foodTypeWheelSection = document.getElementById('foodTypeWheelSection');
+  const restaurantWheelSection = document.getElementById('restaurantWheelSection');
+
+  // Order matters: pick the “next step” most users want.
+  if (isVisible(locationSection) && getLocationBtn && !getLocationBtn.disabled) {
+    return { label: 'Get My Location', iconClass: 'fa-location-arrow', targetId: 'getLocationBtn', disabled: false };
+  }
+  if (isVisible(filtersSection) && findRestaurantsBtn) {
+    return { label: 'Find Restaurants', iconClass: 'fa-search', targetId: 'findRestaurantsBtn', disabled: false };
+  }
+  if (isVisible(foodTypeWheelSection) && spinFoodTypeBtn) {
+    return { label: 'Spin Food Type', iconClass: 'fa-play', targetId: 'spinFoodTypeBtn', disabled: false };
+  }
+  if (isVisible(restaurantWheelSection)) {
+    if (decisionMode === 'battle') {
+      const active = battleState?.active === true;
+      if (active && battleSkipBtn) {
+        return { label: 'Random Pick', iconClass: 'fa-random', targetId: 'battleSkipBtn', disabled: battleSkipBtn.disabled };
+      }
+      if (startBattleBtn) {
+        return { label: 'Start Battle', iconClass: 'fa-bolt', targetId: 'startBattleBtn', disabled: startBattleBtn.disabled };
+      }
+    }
+    if (spinRestaurantBtn) {
+      return { label: 'Spin Restaurant', iconClass: 'fa-play', targetId: 'spinRestaurantBtn', disabled: spinRestaurantBtn.disabled };
+    }
+  }
+  return null;
+}
+
+function updateMobileActionBar() {
+  const bar = document.getElementById('mobileActionBar');
+  const btn = document.getElementById('mobileActionBtn');
+  const labelEl = document.getElementById('mobileActionLabel');
+  if (!bar || !btn || !labelEl) return;
+
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (!isMobile) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  const action = getPrimaryAction();
+  if (!action) {
+    bar.style.display = 'none';
+    return;
+  }
+
+  bar.style.display = 'block';
+  btn.disabled = !!action.disabled;
+  labelEl.textContent = action.label;
+  const icon = btn.querySelector('i');
+  if (icon && action.iconClass) {
+    icon.className = `fas ${action.iconClass}`;
+  }
 }
 
 function showLocalApiKeyHintIfNeeded() {
