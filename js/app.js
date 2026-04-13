@@ -3,6 +3,15 @@ let restaurants = [];
 let selectedFoodTypes = [];
 let filteredRestaurants = [];
 let selectedFoodTypeFromWheel = null;
+let decisionMode = 'wheel'; // 'wheel' | 'battle'
+
+let battleState = {
+  active: false,
+  remaining: [],
+  currentPair: null,
+  round: 1,
+  initialCount: 0
+};
 
 const foodTypes = [
   'Italian','Chinese','Mexican','Japanese','Indian','Thai',
@@ -50,6 +59,31 @@ function initializeApp() {
     document.getElementById('locationStatus').textContent = 'Geolocation is not supported by this browser';
     document.getElementById('getLocationBtn').disabled = true;
   }
+
+  showLocalApiKeyHintIfNeeded();
+}
+
+function showLocalApiKeyHintIfNeeded() {
+  const el = document.getElementById('apiKeyStatus');
+  if (!el) return;
+
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (!isLocal) return;
+
+  const hasGmaps = typeof google !== 'undefined' && google.maps && google.maps.places;
+  if (hasGmaps || window.GMAPS_READY) return;
+
+  const possible =
+    (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('GOOGLE_MAPS_API_KEY')) ||
+    (new URLSearchParams(window.location.search)).get('gmap_key');
+
+  if (!possible) {
+    el.style.display = 'block';
+    el.innerHTML =
+      `Local dev: Google Maps key not found. Add \`?gmap_key=YOUR_KEY\` to the URL, ` +
+      `or set \`localStorage.GOOGLE_MAPS_API_KEY\`, then refresh.`;
+  }
 }
 
 function setupEventListeners() {
@@ -58,7 +92,27 @@ function setupEventListeners() {
   document.getElementById('findRestaurantsBtn').addEventListener('click', findRestaurants);
   document.getElementById('spinFoodTypeBtn').addEventListener('click', spinFoodTypeWheel);
   document.getElementById('spinRestaurantBtn').addEventListener('click', spinRestaurantWheel);
+  document.getElementById('modeWheelBtn')?.addEventListener('click', () => setDecisionMode('wheel'));
+  document.getElementById('modeBattleBtn')?.addEventListener('click', () => setDecisionMode('battle'));
+  document.getElementById('startBattleBtn')?.addEventListener('click', startBattleRoyale);
+  document.getElementById('battleSkipBtn')?.addEventListener('click', battleRandomPick);
+  document.getElementById('battleBackToWheelBtn')?.addEventListener('click', () => setDecisionMode('wheel'));
+
+  const left = document.getElementById('battleLeft');
+  const right = document.getElementById('battleRight');
+  left?.addEventListener('click', () => battlePick('left'));
+  right?.addEventListener('click', () => battlePick('right'));
+  left?.addEventListener('keydown', (e) => onBattleCardKeydown(e, 'left'));
+  right?.addEventListener('keydown', (e) => onBattleCardKeydown(e, 'right'));
   addTouchEventListeners();
+}
+
+function onBattleCardKeydown(e, side) {
+  if (!e) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    battlePick(side);
+  }
 }
 
 function addTouchEventListeners() {
@@ -191,6 +245,7 @@ async function findRestaurants() {
   try {
     restaurants = [];
     filteredRestaurants = [];
+    battleResetUI();
     const foodTypeWheelSection = document.getElementById('foodTypeWheelSection');
     foodTypeWheelSection.style.display = 'block';
     foodTypeWheelSection.classList.add('fade-in-up');
@@ -216,6 +271,42 @@ function setRestaurantLoading(isLoading) {
     wheelSegments.innerHTML = '';
     wheelSegments.style.transform = 'rotate(0deg)';
   }
+}
+
+function updateDecisionModesUI() {
+  const modes = document.getElementById('decisionModes');
+  const wheelBtn = document.getElementById('modeWheelBtn');
+  const battleBtn = document.getElementById('modeBattleBtn');
+  const wheelPane = document.getElementById('wheelPane');
+  const battlePane = document.getElementById('battlePane');
+  const startBattleBtn = document.getElementById('startBattleBtn');
+
+  if (modes) modes.style.display = filteredRestaurants.length ? 'block' : 'none';
+
+  const isWheel = decisionMode === 'wheel';
+  if (wheelBtn) {
+    wheelBtn.classList.toggle('is-active', isWheel);
+    wheelBtn.setAttribute('aria-selected', isWheel ? 'true' : 'false');
+  }
+  if (battleBtn) {
+    battleBtn.classList.toggle('is-active', !isWheel);
+    battleBtn.setAttribute('aria-selected', !isWheel ? 'true' : 'false');
+  }
+
+  if (wheelPane) wheelPane.style.display = isWheel ? 'block' : 'none';
+  if (battlePane) battlePane.style.display = isWheel ? 'none' : 'block';
+
+  if (startBattleBtn) startBattleBtn.disabled = filteredRestaurants.length < 2;
+
+  if (!isWheel) {
+    // If they switched into battle mode after results loaded, make sure UI is ready.
+    battleResetUI({ keepMode: true });
+  }
+}
+
+function setDecisionMode(mode) {
+  decisionMode = mode === 'battle' ? 'battle' : 'wheel';
+  updateDecisionModesUI();
 }
 
 function getErrorMessage(error) {
@@ -526,6 +617,7 @@ async function searchRestaurantsByFoodType(foodType) {
       createWheelSegments('restaurantWheel', filteredRestaurants, 'restaurant');
       setRestaurantLoading(false);
       displayRestaurants(filteredRestaurants, true, foodType);
+      updateDecisionModesUI();
       return;
     }
 
@@ -630,6 +722,7 @@ async function searchRestaurantsByFoodType(foodType) {
     setRestaurantLoading(false);
 
     displayRestaurants(sorted, true, foodType);
+    updateDecisionModesUI();
 
     const resultsSection = document.getElementById('resultsSection');
     resultsSection.style.display = 'block';
@@ -641,6 +734,239 @@ async function searchRestaurantsByFoodType(foodType) {
     const errorMessage = getErrorMessage(error);
     alert(`Error searching for ${foodType} restaurants: ${errorMessage}`);
   }
+}
+
+function battleResetUI({ keepMode = false } = {}) {
+  battleState.active = false;
+  battleState.remaining = [];
+  battleState.currentPair = null;
+  battleState.round = 1;
+  battleState.initialCount = 0;
+
+  const left = document.getElementById('battleLeft');
+  const right = document.getElementById('battleRight');
+  const hint = document.getElementById('battleHint');
+  const roundLabel = document.getElementById('battleRoundLabel');
+  const countLabel = document.getElementById('battleCountLabel');
+  const skipBtn = document.getElementById('battleSkipBtn');
+
+  if (left) left.innerHTML = '';
+  if (right) right.innerHTML = '';
+  if (hint) hint.textContent = 'Tap a card to pick the winner';
+  if (roundLabel) roundLabel.textContent = 'Round 1';
+  if (countLabel) countLabel.textContent = '';
+  if (skipBtn) skipBtn.disabled = true;
+
+  if (!keepMode) {
+    decisionMode = 'wheel';
+  }
+}
+
+function shuffleInPlace(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function pickBattlePool(list) {
+  // Keep it snappy + readable on screen: cap to 16, prefer closer ones (list already sorted by distance).
+  const cap = Math.min(16, list.length);
+  const pool = list.slice(0, cap);
+  // Shuffle so it feels like a “fight”.
+  return shuffleInPlace(pool.slice());
+}
+
+function renderBattleCard(el, restaurant) {
+  if (!el) return;
+  if (!restaurant) {
+    el.innerHTML = '';
+    return;
+  }
+  const ratingText = typeof restaurant.rating === 'number' ? restaurant.rating.toFixed(1) : 'N/A';
+  el.innerHTML = `
+    <div>
+      <h3>${restaurant.name}</h3>
+      <div class="meta">
+        <span class="pill"><i class="fas fa-star" aria-hidden="true"></i> ${ratingText}</span>
+        <span class="pill"><i class="fas fa-comment" aria-hidden="true"></i> ${restaurant.reviews}</span>
+        <span class="pill"><i class="fas fa-route" aria-hidden="true"></i> ${restaurant.distance} mi</span>
+      </div>
+    </div>
+    <div class="meta" style="margin-top:12px;">
+      <span class="pill"><i class="fas fa-tags" aria-hidden="true"></i> ${(restaurant.foodTypes || []).slice(0, 2).join(', ') || 'Restaurant'}</span>
+    </div>
+  `;
+}
+
+function setBattleLabels() {
+  const roundLabel = document.getElementById('battleRoundLabel');
+  const countLabel = document.getElementById('battleCountLabel');
+  if (roundLabel) roundLabel.textContent = `Round ${battleState.round}`;
+  if (countLabel) {
+    const remaining = battleState.remaining.length;
+    if (battleState.active) {
+      countLabel.textContent = `${remaining} fighters left`;
+    } else if (battleState.initialCount) {
+      countLabel.textContent = `${battleState.initialCount} fighters loaded`;
+    } else {
+      countLabel.textContent = '';
+    }
+  }
+}
+
+function startBattleRoyale() {
+  if (!filteredRestaurants.length) {
+    alert('No restaurants loaded yet. Spin the food wheel first.');
+    return;
+  }
+  if (filteredRestaurants.length < 2) {
+    alert('Need at least 2 restaurants to battle.');
+    return;
+  }
+
+  setDecisionMode('battle');
+  battleResetUI({ keepMode: true });
+
+  battleState.active = true;
+  battleState.remaining = pickBattlePool(filteredRestaurants);
+  battleState.initialCount = battleState.remaining.length;
+  battleState.round = 1;
+  setBattleLabels();
+
+  const skipBtn = document.getElementById('battleSkipBtn');
+  if (skipBtn) skipBtn.disabled = false;
+
+  nextBattlePair();
+}
+
+function nextBattlePair() {
+  if (!battleState.active) return;
+
+  if (battleState.remaining.length === 1) {
+    const winner = battleState.remaining[0];
+    battleState.active = false;
+    finalizeRestaurantChoice(winner);
+    return;
+  }
+
+  if (battleState.remaining.length === 0) {
+    battleState.active = false;
+    alert('Battle ended unexpectedly. Try starting again.');
+    return;
+  }
+
+  if (battleState.remaining.length === 2) {
+    // Final matchup.
+    battleState.round += 1;
+  } else {
+    battleState.round += 1;
+  }
+  setBattleLabels();
+
+  const leftR = battleState.remaining.shift();
+  const rightR = battleState.remaining.shift();
+  battleState.currentPair = { left: leftR, right: rightR };
+
+  const leftEl = document.getElementById('battleLeft');
+  const rightEl = document.getElementById('battleRight');
+  if (leftEl) {
+    leftEl.className = 'battle-card battle-card-left is-enter';
+    renderBattleCard(leftEl, leftR);
+    setTimeout(() => leftEl.classList.remove('is-enter'), 380);
+  }
+  if (rightEl) {
+    rightEl.className = 'battle-card battle-card-right is-enter';
+    renderBattleCard(rightEl, rightR);
+    setTimeout(() => rightEl.classList.remove('is-enter'), 380);
+  }
+
+  const hint = document.getElementById('battleHint');
+  if (hint) hint.textContent = 'Tap a card to pick the winner';
+}
+
+function battlePick(side) {
+  if (!battleState.active || !battleState.currentPair) return;
+
+  const leftEl = document.getElementById('battleLeft');
+  const rightEl = document.getElementById('battleRight');
+  const hint = document.getElementById('battleHint');
+
+  const winner = side === 'right' ? battleState.currentPair.right : battleState.currentPair.left;
+  const loser = side === 'right' ? battleState.currentPair.left : battleState.currentPair.right;
+
+  if (hint) hint.textContent = `${winner.name} wins!`;
+
+  if (leftEl && rightEl) {
+    leftEl.classList.remove('is-winner', 'is-loser');
+    rightEl.classList.remove('is-winner', 'is-loser');
+    if (side === 'left') {
+      leftEl.classList.add('is-winner');
+      rightEl.classList.add('is-loser', 'is-exit');
+    } else {
+      rightEl.classList.add('is-winner');
+      leftEl.classList.add('is-loser', 'is-exit');
+    }
+  }
+
+  // Winner goes back into the pool.
+  battleState.remaining.push(winner);
+  battleState.currentPair = null;
+  setBattleLabels();
+
+  setTimeout(() => {
+    if (!battleState.active) return;
+    // Clean up exit class to avoid stacking.
+    leftEl?.classList.remove('is-exit', 'is-winner', 'is-loser');
+    rightEl?.classList.remove('is-exit', 'is-winner', 'is-loser');
+    nextBattlePair();
+  }, 320);
+}
+
+function battleRandomPick() {
+  if (!battleState.active || !battleState.currentPair) return;
+  const side = Math.random() < 0.5 ? 'left' : 'right';
+  battlePick(side);
+}
+
+function finalizeRestaurantChoice(selectedRestaurant) {
+  const result = document.getElementById('restaurantResult');
+  const selectedRestaurantSpan = document.getElementById('selectedRestaurant');
+  const restaurantDetails = document.getElementById('restaurantDetails');
+
+  if (!selectedRestaurantSpan || !restaurantDetails || !result) return;
+
+  selectedRestaurantSpan.textContent = selectedRestaurant.name;
+  restaurantDetails.innerHTML = `<p><i class="fas fa-spinner fa-spin"></i> Loading details…</p>`;
+
+  const service = getPlacesService();
+  getPlaceDetails(service, selectedRestaurant.id).then((details) => {
+    const address = details?.formatted_address || selectedRestaurant.address || 'Address not available';
+    const phone = details?.formatted_phone_number || 'Phone not available';
+    const starsCount = typeof selectedRestaurant.rating === 'number' ? Math.floor(selectedRestaurant.rating) : 0;
+    const stars = '★'.repeat(starsCount) + '☆'.repeat(5 - starsCount);
+    const ratingText = typeof selectedRestaurant.rating === 'number' ? selectedRestaurant.rating.toFixed(1) : 'N/A';
+    const googleMapsLink =
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address + ' ' + selectedRestaurant.name)}`;
+
+    restaurantDetails.innerHTML = `
+      <p><strong>Rating:</strong> ${stars} ${ratingText}</p>
+      <p><strong>Reviews:</strong> ${selectedRestaurant.reviews}</p>
+      <p><strong>Distance:</strong> ${selectedRestaurant.distance} miles</p>
+      <p><strong>Address:</strong> <a href="${googleMapsLink}" target="_blank" rel="noopener noreferrer">${address} <i class="fas fa-external-link-alt"></i></a></p>
+      <p><strong>Phone:</strong> ${
+        phone && phone !== 'Phone not available'
+          ? `<a href="tel:${phone.replace(/\D/g, '')}">${phone}</a>`
+          : 'Phone not available'
+      }</p>
+      <p><strong>Food Types:</strong> ${(selectedRestaurant.foodTypes || []).join(', ')}</p>
+    `;
+  });
+
+  result.style.display = 'block';
+  result.classList.add('fade-in-up');
+  setTimeout(() => result.classList.remove('fade-in-up'), 500);
 }
 
 function spinRestaurantWheel() {
@@ -694,31 +1020,7 @@ function spinRestaurantWheel() {
 
       wheel.classList.remove('spinning');
 
-      restaurantDetails.innerHTML = `<p><i class="fas fa-spinner fa-spin"></i> Loading details…</p>`;
-
-      const service = getPlacesService();
-      getPlaceDetails(service, selectedRestaurant.id).then((details) => {
-        const address = details?.formatted_address || selectedRestaurant.address || 'Address not available';
-        const phone = details?.formatted_phone_number || 'Phone not available';
-        const starsCount = typeof selectedRestaurant.rating === 'number' ? Math.floor(selectedRestaurant.rating) : 0;
-        const stars = '★'.repeat(starsCount) + '☆'.repeat(5 - starsCount);
-        const ratingText = typeof selectedRestaurant.rating === 'number' ? selectedRestaurant.rating.toFixed(1) : 'N/A';
-        const googleMapsLink =
-          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address + ' ' + selectedRestaurant.name)}`;
-
-        restaurantDetails.innerHTML = `
-          <p><strong>Rating:</strong> ${stars} ${ratingText}</p>
-          <p><strong>Reviews:</strong> ${selectedRestaurant.reviews}</p>
-          <p><strong>Distance:</strong> ${selectedRestaurant.distance} miles</p>
-          <p><strong>Address:</strong> <a href="${googleMapsLink}" target="_blank" rel="noopener noreferrer">${address} <i class="fas fa-external-link-alt"></i></a></p>
-          <p><strong>Phone:</strong> ${
-            phone && phone !== 'Phone not available'
-              ? `<a href="tel:${phone.replace(/\D/g, '')}">${phone}</a>`
-              : 'Phone not available'
-          }</p>
-          <p><strong>Food Types:</strong> ${selectedRestaurant.foodTypes.join(', ')}</p>
-        `;
-      });
+      finalizeRestaurantChoice(selectedRestaurant);
 
       result.style.display = 'block';
       result.classList.add('fade-in-up');

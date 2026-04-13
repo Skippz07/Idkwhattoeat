@@ -74,6 +74,7 @@
                 <h2><i class="fas fa-map-marker-alt"></i> Your Location</h2>
                 <div class="location-info">
                     <p id="locationStatus">Detecting your location...</p>
+                    <p id="apiKeyStatus" class="api-key-status" style="display:none;"></p>
                     <button id="getLocationBtn" class="btn btn-primary">
                         <i class="fas fa-location-arrow"></i> Get My Location
                     </button>
@@ -173,6 +174,18 @@
         <section class="wheel-section" id="restaurantWheelSection" style="display: none;">
             <div class="card">
               <h2><i class="fas fa-dice"></i> Where Should You Eat?</h2>
+
+              <div class="decision-modes" id="decisionModes" style="display:none;">
+                <p class="decision-modes-label"><i class="fas fa-gamepad"></i> How should we decide?</p>
+                <div class="decision-modes-buttons" role="tablist" aria-label="Decision modes">
+                  <button id="modeWheelBtn" class="btn btn-secondary is-active" type="button" role="tab" aria-selected="true">
+                    <i class="fas fa-circle-notch"></i> Wheel
+                  </button>
+                  <button id="modeBattleBtn" class="btn btn-secondary" type="button" role="tab" aria-selected="false">
+                    <i class="fas fa-skull-crossbones"></i> Battle Royale
+                  </button>
+                </div>
+              </div>
           
               <!-- Loader should live inside the card, above the wheel -->
               <div id="restaurantLoading" class="inline-loader" aria-live="polite" style="display:none;">
@@ -180,7 +193,7 @@
                 <span>Loading restaurants…</span>
               </div>
           
-              <div class="wheel-container">
+              <div class="wheel-container decision-pane" id="wheelPane">
                 <div class="wheel" id="restaurantWheel">
                   <div class="wheel-pointer"></div>
                   <div class="wheel-segments" id="restaurantWheelSegments">
@@ -190,6 +203,36 @@
                 <button id="spinRestaurantBtn" class="btn btn-primary" disabled>
                   <i class="fas fa-play"></i> Spin for Restaurant
                 </button>
+              </div>
+
+              <div class="battle-container decision-pane" id="battlePane" style="display:none;">
+                <div class="battle-header">
+                  <div class="battle-progress">
+                    <span class="battle-round" id="battleRoundLabel">Round 1</span>
+                    <span class="battle-count" id="battleCountLabel"></span>
+                  </div>
+                  <button id="startBattleBtn" class="btn btn-primary" type="button" disabled>
+                    <i class="fas fa-bolt"></i> Start Battle
+                  </button>
+                </div>
+
+                <div class="battle-arena" id="battleArena" aria-live="polite">
+                  <div class="battle-card battle-card-left" id="battleLeft" role="button" tabindex="0" aria-label="Choose left restaurant"></div>
+                  <div class="battle-vs">
+                    <div class="vs-badge">VS</div>
+                    <div class="battle-hint" id="battleHint">Tap a card to pick the winner</div>
+                  </div>
+                  <div class="battle-card battle-card-right" id="battleRight" role="button" tabindex="0" aria-label="Choose right restaurant"></div>
+                </div>
+
+                <div class="battle-footer">
+                  <button id="battleSkipBtn" class="btn btn-secondary" type="button" disabled>
+                    <i class="fas fa-random"></i> Random Pick
+                  </button>
+                  <button id="battleBackToWheelBtn" class="btn btn-secondary" type="button">
+                    <i class="fas fa-undo"></i> Back to Wheel
+                  </button>
+                </div>
               </div>
           
               <div class="result" id="restaurantResult" style="display: none;">
