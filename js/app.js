@@ -560,6 +560,35 @@ function displayRestaurants(list, isFiltered = false, filterType = null) {
   resultsSection.classList.add('fade-in-up');
 }
 
+function showRestaurantsSkeleton(count = 6, label = 'Loading…') {
+  const resultsSection = document.getElementById('resultsSection');
+  const restaurantsGrid = document.getElementById('restaurantsGrid');
+  const restaurantCount = document.getElementById('restaurantCount');
+
+  if (!resultsSection || !restaurantsGrid || !restaurantCount) return;
+
+  restaurantCount.textContent = label;
+  restaurantsGrid.innerHTML = '';
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement('div');
+    card.className = 'restaurant-card skeleton-card';
+    card.innerHTML = `
+      <div class="skeleton skeleton-line lg"></div>
+      <div class="skeleton skeleton-line md"></div>
+      <div class="skeleton skeleton-line sm"></div>
+      <div class="skeleton skeleton-line md"></div>
+      <div class="skeleton skeleton-line sm"></div>
+    `;
+    frag.appendChild(card);
+  }
+  restaurantsGrid.appendChild(frag);
+
+  resultsSection.style.display = 'block';
+  resultsSection.classList.add('fade-in-up');
+}
+
 function createRestaurantCard(restaurant) {
   const card = document.createElement('div');
   card.className = 'restaurant-card';
@@ -645,6 +674,7 @@ function filterRestaurantsByWheelSelection(selectedFoodType) {
   restaurantWheelSection.style.display = 'block';
   restaurantWheelSection.classList.add('fade-in-up');
   setRestaurantLoading(true);
+  showRestaurantsSkeleton(6, 'Searching…');
   searchRestaurantsByFoodType(selectedFoodType);
 }
 
@@ -1058,7 +1088,15 @@ function finalizeRestaurantChoice(selectedRestaurant) {
   if (!selectedRestaurantSpan || !restaurantDetails || !result) return;
 
   selectedRestaurantSpan.textContent = selectedRestaurant.name;
-  restaurantDetails.innerHTML = `<p><i class="fas fa-spinner fa-spin"></i> Loading details…</p>`;
+  restaurantDetails.innerHTML = `
+    <div class="details-skeleton">
+      <div class="skeleton skeleton-line lg"></div>
+      <div class="skeleton skeleton-line md"></div>
+      <div class="skeleton skeleton-line md"></div>
+      <div class="skeleton skeleton-line lg"></div>
+      <div class="skeleton skeleton-line sm"></div>
+    </div>
+  `;
 
   const service = getPlacesService();
   getPlaceDetails(service, selectedRestaurant.id).then((details) => {
@@ -1159,11 +1197,18 @@ function createWheelSegments(wheelId, items, segmentType = 'food') {
     return;
   }
 
-  const colors = [
-    '#ff6b6b','#4ecdc4','#45b7d1','#96ceb4','#feca57','#ff9ff3',
-    '#54a0ff','#5f27cd','#00d2d3','#ff9f43','#10ac84','#ee5a24',
-    '#ff7675','#74b9ff','#a29bfe','#fd79a8','#fdcb6e','#6c5ce7'
-  ];
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const colors = isDark
+    ? [
+      '#ff6b6b','#feca57','#54a0ff','#a29bfe','#4ecdc4','#10ac84',
+      '#ff9f43','#74b9ff','#fd79a8','#6c5ce7','#00d2d3','#ee5a24',
+      '#96ceb4','#45b7d1','#ff9ff3','#fdcb6e','#5f27cd','#ff7675'
+    ]
+    : [
+      '#ff6b6b','#4ecdc4','#45b7d1','#96ceb4','#feca57','#ff9ff3',
+      '#54a0ff','#5f27cd','#00d2d3','#ff9f43','#10ac84','#ee5a24',
+      '#ff7675','#74b9ff','#a29bfe','#fd79a8','#fdcb6e','#6c5ce7'
+    ];
 
   const segmentAngle = 360 / items.length;
   let gradientStops = '';
