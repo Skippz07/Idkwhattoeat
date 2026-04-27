@@ -12,53 +12,6 @@
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script>
-        async function loadGoogleMapsAPI() {
-            let apiKey = '';
-            const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-            try {
-                const response = await fetch('/api/config');
-                if (response.ok) {
-                    const data = await response.json();
-                    apiKey = data.apiKey || '';
-                }
-            } catch (e) {}
-
-            if (!apiKey && isLocal) {
-                if (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) {
-                    apiKey = window.GOOGLE_MAPS_API_KEY;
-                }
-                if (!apiKey && typeof localStorage !== 'undefined') {
-                    const stored = localStorage.getItem('GOOGLE_MAPS_API_KEY');
-                    if (stored) apiKey = stored;
-                }
-                if (!apiKey) {
-                    const params = new URLSearchParams(window.location.search);
-                    const fromQuery = params.get('gmap_key');
-                    if (fromQuery) apiKey = fromQuery;
-                }
-            }
-
-            if (!apiKey) return;
-
-            await new Promise((resolve, reject) => {
-                window.__onGoogleMapsLoaded = () => {
-                    window.GMAPS_READY = true;
-                    document.dispatchEvent(new Event('gmaps:ready'));
-                    resolve();
-                };
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=__onGoogleMapsLoaded`;
-                script.async = true;
-                script.defer = true;
-                script.onerror = () => reject(new Error('Google Maps script failed to load'));
-                document.head.appendChild(script);
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', loadGoogleMapsAPI);
-    </script>
 </head>
 <body>
     <div class="container">
@@ -148,7 +101,7 @@
 
                 <!-- Food Type Filter -->
                 <div class="filter-group">
-                    <label>Food Types:</label>
+                    <label>Food Types <span class="optional-label">(optional - leave blank to spin all)</span>:</label>
                     <div class="food-types-grid" id="foodTypesGrid">
                         <!-- Food types will be populated dynamically -->
                     </div>
@@ -164,6 +117,7 @@
         <section class="wheel-section" id="foodTypeWheelSection" style="display: none;">
             <div class="card">
                 <h2><i class="fas fa-dice"></i> What Type of Food Are You In The Mood For?</h2>
+                <p class="wheel-summary" id="foodTypeWheelSummary">Spinning from every food type.</p>
                 <div class="wheel-container">
                     <div class="wheel" id="foodTypeWheel">
                         <div class="wheel-pointer"></div>
@@ -171,9 +125,14 @@
                             <!-- Wheel segments will be populated dynamically -->
                         </div>
                     </div>
-                    <button id="spinFoodTypeBtn" class="btn btn-primary">
-                        <i class="fas fa-play"></i> Spin for Food Type
-                    </button>
+                    <div class="wheel-actions">
+                        <button id="spinFoodTypeBtn" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Spin for Food Type
+                        </button>
+                        <button id="changeFoodTypesBtn" class="btn btn-secondary" type="button">
+                            <i class="fas fa-sliders-h"></i> Change Food Types
+                        </button>
+                    </div>
                 </div>
                 <div class="result" id="foodTypeResult" style="display: none;">
                     <h3>You should try: <span id="selectedFoodType"></span></h3>

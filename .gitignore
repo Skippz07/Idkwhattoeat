@@ -23,6 +23,7 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+ui-check-*.png
 
 # Runtime data
 pids
@@ -47,3 +48,4 @@ node_modules/
 
 # Yarn Integrity file
 .yarn-integrity
+.vercel

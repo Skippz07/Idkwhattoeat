@@ -1,4 +1,4 @@
-// Vercel serverless function to provide API key (CommonJS for broad compatibility)
+// Health/config endpoint. Never returns private API keys to the browser.
 module.exports = function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -13,10 +13,8 @@ module.exports = function handler(req, res) {
         return;
     }
 
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-        res.status(500).json({ error: 'Google Maps API key not configured' });
-        return;
-    }
-    res.status(200).json({ apiKey });
+    res.status(200).json({
+        googlePlacesConfigured: Boolean(process.env.GOOGLE_MAPS_API_KEY),
+        mode: 'server-proxy'
+    });
 }

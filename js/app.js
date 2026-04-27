@@ -20,14 +20,6 @@ const foodTypes = [
   'Vegetarian','Vegan','Desserts','Coffee','Fast Food','Fine Dining'
 ];
 
-let __placesService = null;
-function getPlacesService() {
-  if (__placesService) return __placesService;
-  const tempMap = new google.maps.Map(document.createElement('div'), { center: { lat: 0, lng: 0 }, zoom: 1 });
-  __placesService = new google.maps.places.PlacesService(tempMap);
-  return __placesService;
-}
-
 let activeSearchAbort = null;
 
 const resultsCache = new Map();
@@ -62,7 +54,7 @@ function initializeApp() {
     document.getElementById('getLocationBtn').disabled = true;
   }
 
-  showLocalApiKeyHintIfNeeded();
+  showApiStatus();
 }
 
 function initTheme() {
@@ -183,26 +175,21 @@ function updateMobileActionBar() {
   }
 }
 
-function showLocalApiKeyHintIfNeeded() {
+async function showApiStatus() {
   const el = document.getElementById('apiKeyStatus');
   if (!el) return;
 
-  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  if (!isLocal) return;
-
-  const hasGmaps = typeof google !== 'undefined' && google.maps && google.maps.places;
-  if (hasGmaps || window.GMAPS_READY) return;
-
-  const possible =
-    (typeof window !== 'undefined' && window.GOOGLE_MAPS_API_KEY) ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('GOOGLE_MAPS_API_KEY')) ||
-    (new URLSearchParams(window.location.search)).get('gmap_key');
-
-  if (!possible) {
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) throw new Error('Config unavailable');
+    const data = await res.json();
+    if (!data.googlePlacesConfigured) {
+      el.style.display = 'block';
+      el.textContent = 'Restaurant search is running through the private server API, but GOOGLE_MAPS_API_KEY is not configured yet.';
+    }
+  } catch {
     el.style.display = 'block';
-    el.innerHTML =
-      `Local dev: Google Maps key not found. Add \`?gmap_key=YOUR_KEY\` to the URL, ` +
-      `or set \`localStorage.GOOGLE_MAPS_API_KEY\`, then refresh.`;
+    el.textContent = 'Restaurant search needs the server API. Run with Vercel dev or deploy with GOOGLE_MAPS_API_KEY set.';
   }
 }
 
@@ -211,6 +198,7 @@ function setupEventListeners() {
   document.getElementById('distanceRange').addEventListener('input', updateDistanceValue);
   document.getElementById('findRestaurantsBtn').addEventListener('click', findRestaurants);
   document.getElementById('spinFoodTypeBtn').addEventListener('click', spinFoodTypeWheel);
+  document.getElementById('changeFoodTypesBtn')?.addEventListener('click', showFoodTypeFilters);
   document.getElementById('spinRestaurantBtn').addEventListener('click', spinRestaurantWheel);
   document.getElementById('modeWheelBtn')?.addEventListener('click', () => setDecisionMode('wheel'));
   document.getElementById('modeBattleBtn')?.addEventListener('click', () => setDecisionMode('battle'));
@@ -270,6 +258,41 @@ function toggleFoodType(type, element) {
   }
   element.style.animation = 'bounceIn 0.3s ease-out';
   setTimeout(() => { element.style.animation = ''; }, 300);
+  updateFoodTypeWheelSummary();
+}
+
+function getWheelFoodTypes() {
+  return selectedFoodTypes.length > 0 ? selectedFoodTypes : foodTypes;
+}
+
+function updateFoodTypeWheelSummary() {
+  const summary = document.getElementById('foodTypeWheelSummary');
+  if (!summary) return;
+
+  if (selectedFoodTypes.length === 0) {
+    summary.textContent = `No specific cuisine selected. The wheel will choose from all ${foodTypes.length} food types.`;
+    return;
+  }
+
+  const visible = selectedFoodTypes.slice(0, 5).join(', ');
+  const extra = selectedFoodTypes.length > 5 ? ` + ${selectedFoodTypes.length - 5} more` : '';
+  summary.textContent = `Spinning from ${selectedFoodTypes.length} selected food type${selectedFoodTypes.length === 1 ? '' : 's'}: ${visible}${extra}.`;
+}
+
+function showFoodTypeFilters() {
+  const filtersSection = document.getElementById('filtersSection');
+  const foodTypeWheelSection = document.getElementById('foodTypeWheelSection');
+  const restaurantWheelSection = document.getElementById('restaurantWheelSection');
+  const resultsSection = document.getElementById('resultsSection');
+
+  if (filtersSection) {
+    filtersSection.style.display = 'block';
+    filtersSection.classList.add('fade-in-up');
+    filtersSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (foodTypeWheelSection) foodTypeWheelSection.style.display = 'none';
+  if (restaurantWheelSection) restaurantWheelSection.style.display = 'none';
+  if (resultsSection) resultsSection.style.display = 'none';
 }
 
 function updateDistanceValue() {
@@ -369,8 +392,8 @@ async function findRestaurants() {
     const foodTypeWheelSection = document.getElementById('foodTypeWheelSection');
     foodTypeWheelSection.style.display = 'block';
     foodTypeWheelSection.classList.add('fade-in-up');
-    const itemsForWheel = selectedFoodTypes.length > 0 ? selectedFoodTypes : foodTypes;
-    renderFoodWheel(itemsForWheel);
+    updateFoodTypeWheelSummary();
+    renderFoodWheel(getWheelFoodTypes());
   } catch (error) {
     const errorMessage = getErrorMessage(error);
     alert(`Error: ${errorMessage}`);
@@ -443,14 +466,11 @@ function getErrorMessage(error) {
   return 'Unable to fetch restaurant data. Please try again later.';
 }
 
-async function getPlaceDetails(service, placeId) {
-  return new Promise((resolve) => {
-    const request = { placeId, fields: ['formatted_address','formatted_phone_number','types','website','opening_hours'] };
-    service.getDetails(request, (place, status) => {
-      if (status === google.maps.places.PlacesServiceStatus.OK && place) resolve(place);
-      else resolve(null);
-    });
-  });
+async function getPlaceDetails(placeId) {
+  const response = await fetch(`/api/place?id=${encodeURIComponent(placeId)}`);
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.place || null;
 }
 
 function extractFoodTypesFromGooglePlace(place) {
@@ -589,19 +609,84 @@ function showRestaurantsSkeleton(count = 6, label = 'Loading…') {
   resultsSection.classList.add('fade-in-up');
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[ch]));
+}
+
+function formatPrice(level) {
+  const map = {
+    PRICE_LEVEL_FREE: 'Free',
+    PRICE_LEVEL_INEXPENSIVE: '$',
+    PRICE_LEVEL_MODERATE: '$$',
+    PRICE_LEVEL_EXPENSIVE: '$$$',
+    PRICE_LEVEL_VERY_EXPENSIVE: '$$$$'
+  };
+  return map[level] || null;
+}
+
+function openStatusLabel(openNow) {
+  if (openNow === true) return 'Open now';
+  if (openNow === false) return 'Closed';
+  return 'Hours unknown';
+}
+
+function amenityTags(amenities = {}) {
+  const labels = [
+    ['dineIn', 'Dine-in'],
+    ['takeout', 'Takeout'],
+    ['delivery', 'Delivery'],
+    ['reservable', 'Reservations'],
+    ['breakfast', 'Breakfast'],
+    ['lunch', 'Lunch'],
+    ['dinner', 'Dinner'],
+    ['beer', 'Beer'],
+    ['wine', 'Wine'],
+    ['vegetarian', 'Vegetarian']
+  ];
+  return labels.filter(([key]) => amenities[key] === true).map(([, label]) => label);
+}
+
 function createRestaurantCard(restaurant) {
   const card = document.createElement('div');
   card.className = 'restaurant-card';
   const starsCount = typeof restaurant.rating === 'number' ? Math.floor(restaurant.rating) : 0;
-  const stars = '★'.repeat(starsCount) + '☆'.repeat(5 - starsCount);
+  const stars = '<i class="fas fa-star" aria-hidden="true"></i>'.repeat(starsCount) + '<i class="far fa-star" aria-hidden="true"></i>'.repeat(5 - starsCount);
   const ratingText = typeof restaurant.rating === 'number' ? restaurant.rating.toFixed(1) : 'N/A';
+  const price = formatPrice(restaurant.priceLevel);
+  const amenities = amenityTags(restaurant.amenities).slice(0, 3);
+  const mapLink = restaurant.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((restaurant.address || '') + ' ' + restaurant.name)}`;
   card.innerHTML = `
-    <h3>${restaurant.name}</h3>
-    <div class="rating">${stars} ${ratingText}</div>
-    <div class="reviews">${restaurant.reviews} reviews</div>
-    <div class="distance">${restaurant.distance} miles away</div>
+    <div class="restaurant-photo ${restaurant.photoUrl ? '' : 'is-empty'}">
+      ${restaurant.photoUrl ? `<img src="${escapeHtml(restaurant.photoUrl)}" alt="${escapeHtml(restaurant.name)}">` : '<i class="fas fa-utensils" aria-hidden="true"></i>'}
+      <span class="status-chip ${restaurant.openNow === true ? 'open' : restaurant.openNow === false ? 'closed' : ''}">${openStatusLabel(restaurant.openNow)}</span>
+    </div>
+    <div class="restaurant-card-body">
+      <div class="restaurant-title-row">
+        <h3>${escapeHtml(restaurant.name)}</h3>
+        ${price ? `<span class="price-chip">${price}</span>` : ''}
+      </div>
+      <div class="rating">${stars} ${ratingText}</div>
+      <div class="restaurant-meta">
+        <span><i class="fas fa-comment" aria-hidden="true"></i> ${restaurant.reviews} reviews</span>
+        <span><i class="fas fa-route" aria-hidden="true"></i> ${restaurant.distance ?? '?'} mi</span>
+      </div>
+      <p class="restaurant-address">${escapeHtml(restaurant.address || 'Address not available')}</p>
+      ${restaurant.summary ? `<p class="restaurant-summary">${escapeHtml(restaurant.summary)}</p>` : ''}
+      <div class="restaurant-actions">
+        <a class="mini-action" href="${escapeHtml(mapLink)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-map-location-dot"></i> Map</a>
+        ${restaurant.website ? `<a class="mini-action" href="${escapeHtml(restaurant.website)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-globe"></i> Site</a>` : ''}
+        ${restaurant.phone ? `<a class="mini-action" href="tel:${escapeHtml(restaurant.phone.replace(/\D/g, ''))}"><i class="fas fa-phone"></i> Call</a>` : ''}
+      </div>
+    </div>
     <div class="food-types">
-      ${restaurant.foodTypes.map((t) => `<span class="food-type-tag">${t}</span>`).join('')}
+      ${(restaurant.foodTypes || []).map((t) => `<span class="food-type-tag">${escapeHtml(t)}</span>`).join('')}
+      ${amenities.map((t) => `<span class="food-type-tag muted">${escapeHtml(t)}</span>`).join('')}
     </div>
   `;
   return card;
@@ -611,28 +696,29 @@ function spinFoodTypeWheel() {
   const wheel = document.getElementById('foodTypeWheel');
   const result = document.getElementById('foodTypeResult');
   const selectedFoodTypeSpan = document.getElementById('selectedFoodType');
+  const wheelFoodTypes = getWheelFoodTypes();
 
   result.style.display = 'none';
 
-  if (selectedFoodTypes.length === 0) {
-    alert('Please select at least one food type before spinning the wheel.');
+  if (wheelFoodTypes.length === 0) {
+    alert('No food types are available to spin.');
     return;
   }
 
-  createWheelSegments('foodTypeWheel', selectedFoodTypes, 'food');
+  createWheelSegments('foodTypeWheel', wheelFoodTypes, 'food');
 
   wheel.classList.add('spinning');
 
-  const segmentAngle = 360 / selectedFoodTypes.length;
-  const randomSegment = Math.floor(Math.random() * selectedFoodTypes.length);
+  const segmentAngle = 360 / wheelFoodTypes.length;
+  const randomSegment = Math.floor(Math.random() * wheelFoodTypes.length);
   const finalRotation = 3600 + (randomSegment * segmentAngle) + (segmentAngle / 2);
 
   const wheelSegments = document.getElementById('foodTypeWheelSegments');
   setTimeout(() => { wheelSegments.style.transform = `rotate(${finalRotation}deg)`; }, 50);
 
   const normalizedRotation = finalRotation % 360;
-  const segmentIndex = Math.floor(((360 - normalizedRotation) / segmentAngle)) % selectedFoodTypes.length;
-  const selectedType = selectedFoodTypes[segmentIndex];
+  const segmentIndex = Math.floor(((360 - normalizedRotation) / segmentAngle)) % wheelFoodTypes.length;
+  const selectedType = wheelFoodTypes[segmentIndex];
 
   let currentIndex = 0;
   const spinDuration = 4000;
@@ -641,7 +727,7 @@ function spinFoodTypeWheel() {
   let intervalCount = 0;
 
   const spinInterval = setInterval(() => {
-    const currentType = selectedFoodTypes[currentIndex % selectedFoodTypes.length];
+    const currentType = wheelFoodTypes[currentIndex % wheelFoodTypes.length];
     selectedFoodTypeSpan.textContent = currentType;
     selectedFoodTypeSpan.classList.add('wheel-spinning-text','scale-up');
     setTimeout(() => selectedFoodTypeSpan.classList.remove('scale-up'), 50);
@@ -678,63 +764,6 @@ function filterRestaurantsByWheelSelection(selectedFoodType) {
   searchRestaurantsByFoodType(selectedFoodType);
 }
 
-async function performPaginatedTextSearch(service, request, maxPages = 3, signal) {
-  const all = [];
-  let pagesSeen = 0;
-  return new Promise((resolve) => {
-    const handle = (results, status, pagination) => {
-      if (signal?.aborted) return resolve(all);
-      pagesSeen++;
-      if (status === google.maps.places.PlacesServiceStatus.OK && results?.length) {
-        all.push(...results);
-      }
-      if (pagination?.hasNextPage && pagesSeen < maxPages) {
-        setTimeout(() => {
-          if (signal?.aborted) return resolve(all);
-          pagination.nextPage();
-        }, 300);
-      } else {
-        resolve(all);
-      }
-    };
-    service.textSearch(request, handle);
-  });
-}
-
-async function performPaginatedNearbySearch(service, request, maxPages = 3, signal) {
-  const all = [];
-  let pagesSeen = 0;
-  return new Promise((resolve) => {
-    const handle = (results, status, pagination) => {
-      if (signal?.aborted) return resolve(all);
-      pagesSeen++;
-      if (status === google.maps.places.PlacesServiceStatus.OK && results?.length) {
-        all.push(...results);
-      }
-      if (pagination?.hasNextPage && pagesSeen < maxPages) {
-        setTimeout(() => {
-          if (signal?.aborted) return resolve(all);
-          pagination.nextPage();
-        }, 300);
-      } else {
-        resolve(all);
-      }
-    };
-    service.nearbySearch(request, handle);
-  });
-}
-
-async function ensureGoogleMapsReady(timeoutMs = 8000) {
-  if (typeof google !== 'undefined' && google.maps && google.maps.places) return true;
-  if (window.GMAPS_READY) return true;
-  return new Promise((resolve) => {
-    let settled = false;
-    const onReady = () => { if (!settled) { settled = true; resolve(true); } };
-    const timer = setTimeout(() => { if (!settled) { settled = true; resolve(false); } }, timeoutMs);
-    document.addEventListener('gmaps:ready', () => { clearTimeout(timer); onReady(); }, { once: true });
-  });
-}
-
 async function searchRestaurantsByFoodType(foodType) {
   if (!userLocation) return;
 
@@ -745,21 +774,10 @@ async function searchRestaurantsByFoodType(foodType) {
   const { signal } = activeSearchAbort;
 
   try {
-    const ready = await ensureGoogleMapsReady(8000);
-    if (!ready || typeof google === 'undefined' || !google.maps || !google.maps.places) {
-      throw new Error('Google Maps API not loaded');
-    }
-
-    const service = getPlacesService();
-
     const distance = parseInt(document.getElementById('distanceRange').value, 10);
     const minRating = parseFloat(document.getElementById('minRating').value);
     const minReviews = parseInt(document.getElementById('minReviews').value, 10);
-    const meters = distance * 1609.34;
     const openNow = document.getElementById('openNowFilter')?.checked === true;
-
-    
-
     const cacheKey = `${makeCacheKey(foodType, distance, minRating, minReviews)}::open=${openNow ? 1 : 0}`;
 
     if (resultsCache.has(cacheKey)) {
@@ -771,106 +789,38 @@ async function searchRestaurantsByFoodType(foodType) {
       return;
     }
 
-    let allResults = [];
-
-    const textSearchRequest1 = {
-      query: `${foodType} restaurants`,
-      location: { lat: userLocation.latitude, lng: userLocation.longitude },
-      radius: meters,
-      openNow
-    };
-    const textResults1 = await performPaginatedTextSearch(service, textSearchRequest1, 3, signal);
-    if (signal.aborted) return;
-    if (textResults1?.length) allResults = allResults.concat(textResults1);
-
-    const textSearchRequest2 = {
-      query: foodType,
-      location: { lat: userLocation.latitude, lng: userLocation.longitude },
-      radius: meters,
-      openNow
-    };
-    const textResults2 = await performPaginatedTextSearch(service, textSearchRequest2, 3, signal);
-    if (signal.aborted) return;
-    if (textResults2?.length) allResults = allResults.concat(textResults2);
-
-    if (allResults.length === 0) {
-      const nearbySearchRequest = {
-        location: { lat: userLocation.latitude, lng: userLocation.longitude },
-        radius: meters,
-        type: 'restaurant',
-        openNow
-      };
-      const nearbyResults = await performPaginatedNearbySearch(service, nearbySearchRequest, 3, signal);
-      if (signal.aborted) return;
-      if (nearbyResults?.length) allResults = allResults.concat(nearbyResults);
-    }
-
-    if (foodType.toLowerCase() === 'burgers' && allResults.length < 10) {
-      const burgerChains = ['in-n-out','in n out','habit burger','five guys','wendys','mcdonalds','burger king','shake shack'];
-      for (const chain of burgerChains) {
-        if (signal.aborted) return;
-        const chainReq = {
-          query: chain,
-          location: { lat: userLocation.latitude, lng: userLocation.longitude },
-          radius: meters,
-          openNow
-        };
-        const chainResults = await performPaginatedTextSearch(service, chainReq, 2, signal);
-        if (signal.aborted) return;
-        if (chainResults?.length) allResults = allResults.concat(chainResults);
-      }
-    }
-
-    let uniqueResults = allResults.filter((p, idx, arr) => idx === arr.findIndex((x) => x.place_id === p.place_id));
-    if (openNow) {
-      uniqueResults = uniqueResults.filter(p => p.opening_hours?.open_now !== false);
-    }
-    
-    if (!uniqueResults.length) {
-      setRestaurantLoading(false);
-      alert(`No ${foodType} restaurants found in your area. Try increasing the search radius or spinning the wheel again.`);
-      return;
-    }
-
-    const cosLat1 = Math.cos(userLocation.latitude * Math.PI / 180);
-    const foodTypeRestaurants = uniqueResults.map((place) => {
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
-      const dist = calculateDistanceFast(userLocation.latitude, userLocation.longitude, lat, lng, cosLat1);
-      return {
-        id: place.place_id,
-        name: place.name || 'Restaurant',
-        rating: typeof place.rating === 'number' ? place.rating : null,
-        reviews: Number.isInteger(place.user_ratings_total) ? place.user_ratings_total : 0,
-        distance: dist.toFixed(1),
-        foodTypes: extractFoodTypesFromGooglePlace(place),
-        address: place.formatted_address || place.vicinity || 'Address not available',
-        phone: 'Phone not available',
-        _lat: lat,
-        _lng: lng
-      };
+    const params = new URLSearchParams({
+      foodType,
+      lat: String(userLocation.latitude),
+      lng: String(userLocation.longitude),
+      distance: String(distance),
+      minRating: String(minRating),
+      minReviews: String(minReviews),
+      openNow: String(openNow)
     });
 
-    const filteredFoodTypeRestaurants = foodTypeRestaurants.filter((r) => {
-      const withinDist = parseFloat(r.distance) <= distance;
-      const meetsRating = r.rating === null ? true : r.rating >= minRating;
-      const meetsReviews = r.reviews >= minReviews;
-      return withinDist && meetsRating && meetsReviews;
+    const response = await fetch(`/api/places?${params.toString()}`, { signal });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Unable to search restaurants');
+    if (signal.aborted) return;
+
+    const sorted = (data.restaurants || []).sort((a, b) => {
+      const aOpen = a.openNow === true ? 0 : 1;
+      const bOpen = b.openNow === true ? 0 : 1;
+      if (aOpen !== bOpen) return aOpen - bOpen;
+      return (a.distance ?? 999) - (b.distance ?? 999);
     });
 
-    if (!filteredFoodTypeRestaurants.length) {
+    if (!sorted.length) {
       setRestaurantLoading(false);
       alert(`No ${foodType} restaurants found matching your criteria. Try adjusting your filters or spinning the wheel again.`);
       return;
     }
 
-    const sorted = filteredFoodTypeRestaurants.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
     filteredRestaurants = sorted;
     resultsCache.set(cacheKey, filteredRestaurants);
-
     createWheelSegments('restaurantWheel', filteredRestaurants, 'restaurant');
     setRestaurantLoading(false);
-
     displayRestaurants(sorted, true, foodType);
     updateDecisionModesUI();
 
@@ -1080,6 +1030,37 @@ function battleRandomPick() {
   battlePick(side);
 }
 
+function renderRestaurantDetails(selectedRestaurant, details) {
+  const restaurant = { ...selectedRestaurant, ...(details || {}) };
+  const starsCount = typeof restaurant.rating === 'number' ? Math.floor(restaurant.rating) : 0;
+  const stars = '<i class="fas fa-star" aria-hidden="true"></i>'.repeat(starsCount) + '<i class="far fa-star" aria-hidden="true"></i>'.repeat(5 - starsCount);
+  const ratingText = typeof restaurant.rating === 'number' ? restaurant.rating.toFixed(1) : 'N/A';
+  const price = formatPrice(restaurant.priceLevel);
+  const address = restaurant.address || 'Address not available';
+  const mapLink = restaurant.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address + ' ' + restaurant.name)}`;
+  const amenities = amenityTags(restaurant.amenities);
+  const hours = (restaurant.weekdayDescriptions || []).slice(0, 7);
+  const reviews = (restaurant.reviewsList || []).filter((review) => review.text);
+
+  return `
+    ${restaurant.photoUrl ? `<img class="details-photo" src="${escapeHtml(restaurant.photoUrl)}" alt="${escapeHtml(restaurant.name)}">` : ''}
+    <div class="details-grid">
+      <p><strong>Rating:</strong> ${stars} ${ratingText} (${restaurant.reviews} reviews)</p>
+      ${price ? `<p><strong>Price:</strong> ${price}</p>` : ''}
+      <p><strong>Status:</strong> ${openStatusLabel(restaurant.openNow)}</p>
+      <p><strong>Distance:</strong> ${restaurant.distance ?? '?'} miles</p>
+      <p><strong>Address:</strong> <a href="${escapeHtml(mapLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(address)} <i class="fas fa-external-link-alt"></i></a></p>
+      <p><strong>Phone:</strong> ${restaurant.phone ? `<a href="tel:${escapeHtml(restaurant.phone.replace(/\D/g, ''))}">${escapeHtml(restaurant.phone)}</a>` : 'Phone not available'}</p>
+      ${restaurant.website ? `<p><strong>Website:</strong> <a href="${escapeHtml(restaurant.website)}" target="_blank" rel="noopener noreferrer">Open website <i class="fas fa-external-link-alt"></i></a></p>` : ''}
+      <p><strong>Food Types:</strong> ${(restaurant.foodTypes || []).map(escapeHtml).join(', ')}</p>
+    </div>
+    ${restaurant.summary ? `<p class="details-summary">${escapeHtml(restaurant.summary)}</p>` : ''}
+    ${amenities.length ? `<div class="details-tags">${amenities.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+    ${hours.length ? `<details class="hours-details"><summary>Hours this week</summary>${hours.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}</details>` : ''}
+    ${reviews.length ? `<div class="reviews-list"><h4>Recent Google reviews</h4>${reviews.map((review) => `<blockquote><strong>${escapeHtml(review.author)}</strong> ${review.rating ? `${review.rating}/5` : ''}<br>${escapeHtml(review.text)}</blockquote>`).join('')}</div>` : ''}
+  `;
+}
+
 function finalizeRestaurantChoice(selectedRestaurant) {
   const result = document.getElementById('restaurantResult');
   const selectedRestaurantSpan = document.getElementById('selectedRestaurant');
@@ -1098,28 +1079,10 @@ function finalizeRestaurantChoice(selectedRestaurant) {
     </div>
   `;
 
-  const service = getPlacesService();
-  getPlaceDetails(service, selectedRestaurant.id).then((details) => {
-    const address = details?.formatted_address || selectedRestaurant.address || 'Address not available';
-    const phone = details?.formatted_phone_number || 'Phone not available';
-    const starsCount = typeof selectedRestaurant.rating === 'number' ? Math.floor(selectedRestaurant.rating) : 0;
-    const stars = '★'.repeat(starsCount) + '☆'.repeat(5 - starsCount);
-    const ratingText = typeof selectedRestaurant.rating === 'number' ? selectedRestaurant.rating.toFixed(1) : 'N/A';
-    const googleMapsLink =
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address + ' ' + selectedRestaurant.name)}`;
-
-    restaurantDetails.innerHTML = `
-      <p><strong>Rating:</strong> ${stars} ${ratingText}</p>
-      <p><strong>Reviews:</strong> ${selectedRestaurant.reviews}</p>
-      <p><strong>Distance:</strong> ${selectedRestaurant.distance} miles</p>
-      <p><strong>Address:</strong> <a href="${googleMapsLink}" target="_blank" rel="noopener noreferrer">${address} <i class="fas fa-external-link-alt"></i></a></p>
-      <p><strong>Phone:</strong> ${
-        phone && phone !== 'Phone not available'
-          ? `<a href="tel:${phone.replace(/\D/g, '')}">${phone}</a>`
-          : 'Phone not available'
-      }</p>
-      <p><strong>Food Types:</strong> ${(selectedRestaurant.foodTypes || []).join(', ')}</p>
-    `;
+  getPlaceDetails(selectedRestaurant.id).then((details) => {
+    restaurantDetails.innerHTML = renderRestaurantDetails(selectedRestaurant, details);
+  }).catch(() => {
+    restaurantDetails.innerHTML = renderRestaurantDetails(selectedRestaurant, null);
   });
 
   result.style.display = 'block';
