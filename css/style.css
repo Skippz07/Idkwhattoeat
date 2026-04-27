@@ -41,6 +41,8 @@ html[data-theme="dark"] {
     --bar-border: rgba(255,255,255,0.12);
     --bg-grad-1: #17211f;
     --bg-grad-2: #402119;
+    --primary: #ff7a5e;
+    --primary-2: #39a795;
 }
 
 body {
@@ -180,9 +182,9 @@ html[data-theme="dark"] .theme-select {
 }
 
 .btn-secondary {
-    background: #f1f3f5;
-    color: #333;
-    border: 2px solid #e2e6ea;
+    background: var(--card-2);
+    color: var(--text);
+    border: 2px solid var(--border);
 }
 
 .btn-secondary:hover {
@@ -211,6 +213,24 @@ html[data-theme="dark"] .theme-select {
 .location-info {
     text-align: center;
     margin-bottom: 20px;
+    color: var(--text);
+}
+
+.location-info p {
+    color: var(--text);
+}
+
+html[data-theme="dark"] .location-section .card {
+    background: rgba(20, 24, 36, 0.94);
+    border-color: rgba(255,255,255,0.18);
+}
+
+html[data-theme="dark"] .location-section .card h2 {
+    color: #ff8a70;
+}
+
+html[data-theme="dark"] .location-info p {
+    color: #f4f7fb;
 }
 
 .api-key-status {
@@ -230,8 +250,16 @@ html[data-theme="dark"] .theme-select {
     text-decoration: underline;
 }
 
+html[data-theme="dark"] .api-key-status {
+    background: rgba(254, 202, 87, 0.15);
+    border-color: rgba(254, 202, 87, 0.28);
+    color: #ffe29a;
+}
+
 .location-details {
-    background: #f8f9fa;
+    background: var(--card-2);
+    border: 1px solid var(--border);
+    color: var(--text);
     padding: 20px;
     border-radius: 10px;
     margin-top: 20px;
@@ -240,6 +268,24 @@ html[data-theme="dark"] .theme-select {
 
 .location-details p {
     margin-bottom: 8px;
+    color: var(--text);
+}
+
+.location-details strong {
+    color: var(--text);
+}
+
+.location-details span {
+    color: var(--muted);
+}
+
+html[data-theme="dark"] .location-details {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.16);
+}
+
+html[data-theme="dark"] .location-details span {
+    color: #d7dee8;
 }
 
 /* Filters Section */
@@ -247,11 +293,20 @@ html[data-theme="dark"] .theme-select {
     margin-bottom: 25px;
 }
 
+.filters-section .card > label {
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 22px;
+    font-weight: 600;
+}
+
 .filter-group label {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: #555;
+    color: var(--text);
     font-size: clamp(0.9rem, 2.5vw, 1rem);
 }
 
@@ -381,9 +436,90 @@ html[data-theme="dark"] .theme-select {
     justify-content: center;
 }
 
+.install-prompt {
+    position: fixed;
+    left: 18px;
+    right: 18px;
+    bottom: 96px;
+    z-index: 70;
+    max-width: 460px;
+    margin: 0 auto;
+    padding: 14px;
+    border-radius: 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 22px 50px rgba(0,0,0,0.22);
+    backdrop-filter: blur(18px);
+    color: var(--text);
+    animation: installSlideUp 0.35s ease-out;
+}
+
+.install-prompt[hidden] {
+    display: none !important;
+}
+
+.install-prompt-content {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 12px;
+}
+
+.install-prompt-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, var(--primary), var(--primary-2));
+    color: #fff;
+}
+
+.install-prompt-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.install-prompt-copy span {
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.install-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    color: var(--muted);
+    background: var(--card-2);
+    cursor: pointer;
+}
+
+.install-prompt-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.install-prompt-actions .btn {
+    flex: 1;
+    justify-content: center;
+    margin-bottom: 0;
+}
+
+@keyframes installSlideUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 @media (min-width: 769px) {
     .mobile-action-bar {
         display: none !important;
+    }
+
+    .install-prompt {
+        bottom: 22px;
     }
 }
 
